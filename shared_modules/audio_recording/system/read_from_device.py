@@ -11,51 +11,40 @@ import argparse
 import os
 import sys
 import numpy as np
+from queue import Queue
 import sounddevice as sd
-from time import sleep
 
 
 class AudioReader:
-    def __init__(self, hw_interface, output_pipes, n_chs, frame_size,
-                 sampling_rate, start_delay, bits_per_sample):
+    def __init__(self, hw_interface, n_chs, sampling_rate, start_delay):
         """
         Args:
             hw_interface: Hardware Interface of the device to be used
-            output_pipes: List of pipes to which the audio should be written
             n_chs: Number of channel to be read
-            frame_size: Number of samples per channel in one frame (block)
             sampling_rate: Target sampling rate
             start_delay: Number of frames to drop after start
-            bits_per_sample: Amount of bits to be used to represent a sample
         """
+        self.queue = Queue()
         self.start_delay = start_delay
-        if bits_per_sample == 16:
-            self.d_taype = np.float16
-        elif bits_per_sample == 32:
-            self.d_taype = np.float32
-        elif bits_per_sample == 64:
-            self.d_taype = np.float64
-        self.output_pipes = [os.fdopen(int(f), 'wb') for f in output_pipes]
         # Start a stream to read the data frame by frame from the device
         self.audio_stream = sd.InputStream(
-            device=hw_interface, channels=n_chs, blocksize=frame_size,
-            samplerate=sampling_rate, callback=self.read_frame
+            device=hw_interface, channels=n_chs, samplerate=sampling_rate,
+            callback=self.read_frame
         )
         self.audio_stream.start()
 
     def read_frame(self, indata, *args):
         """
-        Read current frame from the device. This is called (from a separate
-        thread) for each audio frame.
+        Read current frame from the device and write it to the output pipe.
+        This is called (from a separate thread) for each audio frame.
         """
+        if self.start_delay == 0:
+            self.start_delay -= 1
         if self.start_delay > 0:
             # Discard frame during start up phase
             self.start_delay -= 1
         else:
-            # Write audio frame to the pipes
-            for pipe in self.output_pipes:
-                pipe.write(indata.astype(self.d_taype))
-                pipe.flush()
+            self.queue.put(indata)
 
 
 if __name__ == '__main__':
@@ -119,16 +108,33 @@ if __name__ == '__main__':
         if args.start_delay < 0:
             parser.error('argument START_DELAY: must be >= 0')
 
+        if args.bits_per_sample == 16:
+            d_type = np.float16
+        elif args.bits_per_sample == 32:
+            d_type = np.float32
+        elif args.bits_per_sample == 64:
+            d_type = np.float64
+        output_pipes = [os.fdopen(int(f), 'wb') for f in args.outputs]
+
         # Read continuously from the device and write the audio
         # to the output pipes
-        audio_reader = AudioReader(
-            args.hardware_interface, args.outputs, args.channels,
-            args.frame_size, args.sampling_rate, args.start_delay,
-            args.bits_per_sample
-        )
+        audio_reader = AudioReader(args.hardware_interface, args.channels,
+                                   args.sampling_rate, args.start_delay)
+        buffer = np.zeros((32000, args.channels))
+        len_buffered = 0
         while audio_reader.audio_stream.active:
-            # Keep the module alive as long as the device is running
-            sleep(1)
+            # Read audio smaples form the queue nad write it to the buffer
+            data = audio_reader.queue.get()
+            buffer[len_buffered:len_buffered+len(data)] = data
+            len_buffered += len(data)
+
+            # Write all complete frames to the output pipes
+            while len_buffered >= args.frame_size:
+                for pipe in output_pipes:
+                    pipe.write(buffer[:args.frame_size].astype(d_type))
+                    pipe.flush()
+                buffer = np.roll(buffer, -args.frame_size, axis=0)
+                len_buffered -= args.frame_size
     except Exception:
         # If an error occurs display the error in the console
         import traceback

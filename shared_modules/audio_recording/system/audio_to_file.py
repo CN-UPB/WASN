@@ -29,7 +29,7 @@ if __name__ == '__main__':
         "--file_path", "-f", help='Defines where the wave file sould be stored'
     )
     parser.add_argument(
-        "--audio_length", "-l", default=320000,
+        "--audio_length", "-l", type=int, default=320000,
         help='Length in samples of the audio which should be written to a file'
     )
     parser.add_argument("--sampling_rate", "-sr", default=16000,
