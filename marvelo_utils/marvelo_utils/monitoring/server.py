@@ -13,6 +13,7 @@ import Pyro4
 from Pyro4.naming import startNSloop
 from threading import Thread
 from utils import PipeReader
+import json
 
 
 @Pyro4.expose
@@ -21,16 +22,14 @@ class MonitioringServer(object):
     """
     Server to send results to another device where they can be displayed
     """
-    def __init__(self, num_channels, block_len):
+    def __init__(self, block_shape, dtype='float32'):
         """
         Args:
-            num_channels: Number of channels read from the pipe
-            block_len: Length of one block read from the pipe
+            block_shape:
         """
-        self.num_channels = num_channels
-        self.block_len = block_len
-        self.data = \
-            np.zeros((block_len, num_channels), dtype=np.float32).tobytes()
+        self.block_shape = tuple(block_shape)
+        self.dtype = dtype
+        self.data = np.zeros(block_shape, dtype=dtype).tobytes()
         self.block_id = 0
 
     def update_data(self, new_data):
@@ -38,13 +37,13 @@ class MonitioringServer(object):
         self.data = b64decode(new_data['data'])
         self.block_id += 1
 
-    def get_channels(self):
+    def get_block_shape(self):
         """Return the number of channels of one block"""
-        return self.num_channels
+        return self.block_shape
 
-    def get_block_len(self):
-        """Return the length of one block"""
-        return self.block_len
+    def get_dtype(self):
+        """Return the number of channels of one block"""
+        return self.dtype
 
     def get_data(self):
         """Return the currently stored data"""
@@ -55,7 +54,7 @@ class MonitioringServer(object):
         return self.block_id
 
 
-def run_daemon(ip, server_names, num_channels, block_len):
+def run_daemon(ip, server_names, block_shape, dtype):
     """
     Run the monitoring servers and register them in the name server
 
@@ -68,8 +67,8 @@ def run_daemon(ip, server_names, num_channels, block_len):
             to be monitored
     """
     servers = {
-        MonitioringServer(ch, bl): name
-        for name, ch, bl in zip(server_names, num_channels, block_len)
+        MonitioringServer(bs, dt): name
+        for name, bs, dt in zip(server_names, block_shape, dtype)
     }
     print('Start monitoring servers (Broadcast servers)')
     sys.stdout.flush()
@@ -94,31 +93,38 @@ if __name__ == "__main__":
         parser = argparse.ArgumentParser(description='arguments')
         parser.add_argument("--inputs", "-i", action="append",
                             help='IDs of the input pipes of this module')
-        help_msg = ('Comma separated enumeration of the amount of '
-                    'channels of the single results to be monitored')
-        parser.add_argument("--channels", "-c", help=help_msg)
-        help_msg = ('Comma separated enumeration of the lengths of one block'
-                    'of the single results to be monitored')
-        parser.add_argument("--block_len", "-b", help=help_msg)
+        help_msg = 'Block shape as json array'
+        parser.add_argument("--block_shape", "-bs", help=help_msg)
+        help_msg = 'dtype of data to be served.'
+        parser.add_argument("--dtype", "-dt", default=None, help=help_msg)
         help_msg = ('Network interface over which the monitoring'
                     'servers can be reached')
         parser.add_argument("--iface", "-if", default="eth0",
                             type=str, help=help_msg)
-
         parser.add_argument(
             "--name", "-n", default='monitoring', type=str,
             help='Names over which the monitoring servers can be reached'
         )
         args = parser.parse_args()
 
-        num_channels = [int(ch) for ch in args.channels.split(',')]
-        block_len = [int(bl) for bl in args.block_len.split(',')]
         server_names = args.name.split(',')
+        dtype = args.dtype
+        if dtype is None:
+            dtype = len(server_names) * ['float32']
+        else:
+            dtype = dtype.split(',')
+        assert len(server_names) == len(dtype), (server_names, dtype)
         iface = args.iface
-        readers = \
-            [PipeReader(int(input_), (bl, ch))
-             for input_, bl, ch in zip(args.inputs, block_len, num_channels)]
-
+        block_shape = json.loads(args.block_shape)
+        assert isinstance(block_shape, list) and len(block_shape) > 0, block_shape
+        if not isinstance(block_shape[0], list):
+            block_shape = [block_shape]
+        assert isinstance(block_shape[0][0], int), block_shape
+        readers = [
+            PipeReader(int(input_), bs)
+            for input_, bs in zip(args.inputs, block_shape)
+        ]
+        [reader.start() for reader in readers]
         # Get the IP of the device. This is needed to be able to reach the
         # monitoring servers from another device on the network.
         ip = ni.ifaddresses(iface)[ni.AF_INET][0]['addr']
@@ -130,8 +136,10 @@ if __name__ == "__main__":
         thread.start()
 
         # Start the monitoring servers and register then in the name server
-        thread = Thread(target=run_daemon, daemon=True,
-                        args=(ip, server_names, num_channels, block_len))
+        thread = Thread(
+            target=run_daemon, daemon=True,
+            args=(ip, server_names, block_shape, dtype)
+        )
         thread.start()
 
         # Wait until the Pyro server is started
@@ -141,15 +149,15 @@ if __name__ == "__main__":
         # Collect the running monitoring servers to be able to update the data
         # which is stored by them.
         name_server = Pyro4.locateNS()
-        monitoring_servers = \
-            [Pyro4.Proxy(name_server.lookup(name)) for name in server_names]
-
+        monitoring_servers = [
+            Pyro4.Proxy(name_server.lookup(name)) for name in server_names
+        ]
         while True:
             # Collect new data from the input pipes and handle the new data to
             # the monitoring servers.
-            new_data = [reader.read_block() for reader in readers]
-            for monitoring_server, data in zip(monitoring_servers, new_data):
-                monitoring_server.update_data(data.tobytes())
+            for reader, monitoring_server in zip(readers, monitoring_servers):
+                data = reader.get_next_block()
+                monitoring_server.update_data(data.astype(monitoring_server.get_dtype()).tobytes())
     except Exception:
         # If an error occurs display the error in the console
         import traceback
