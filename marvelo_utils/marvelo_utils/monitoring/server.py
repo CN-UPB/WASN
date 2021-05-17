@@ -25,7 +25,8 @@ class MonitioringServer(object):
     def __init__(self, block_shape, dtype='float32'):
         """
         Args:
-            block_shape:
+            block_shape: shape of a block as tuple or list
+            dtype: dtype of a block as string
         """
         self.block_shape = tuple(block_shape)
         self.dtype = dtype
@@ -38,11 +39,11 @@ class MonitioringServer(object):
         self.block_id += 1
 
     def get_block_shape(self):
-        """Return the number of channels of one block"""
+        """Return the block shape of one block"""
         return self.block_shape
 
     def get_dtype(self):
-        """Return the number of channels of one block"""
+        """Return the dtype of one block"""
         return self.dtype
 
     def get_data(self):
@@ -61,9 +62,9 @@ def run_daemon(ip, server_names, block_shape, dtype):
     Args:
         ip: IP of the device on which the Pyro name should be hosted
         server_names: Names over which the monitoring servers can be reached
-        num_channels: List of the amount of channels of the single results
+        block_shape: List of the block shapes of the single results
             to be monitored
-        block_len: List of the lengths of one block of the single results
+        dtype: List of the block dtypes of the single results
             to be monitored
     """
     servers = {
@@ -78,7 +79,7 @@ def run_daemon(ip, server_names, block_shape, dtype):
 def run_name_server(ip):
     """
     Run a Pyro name server. This allows an easy handling of the monitoring
-    servers (hey can simply be addressed by the name they were given).
+    servers (they can simply be addressed by the name they were given).
     Additionally, the name server will be used to easily reach the monitoring
     servers form another device on the network.
 
@@ -91,19 +92,34 @@ def run_name_server(ip):
 if __name__ == "__main__":
     try:
         parser = argparse.ArgumentParser(description='arguments')
-        parser.add_argument("--inputs", "-i", action="append",
-                            help='IDs of the input pipes of this module')
-        help_msg = 'Block shape as json array'
-        parser.add_argument("--block_shape", "-bs", help=help_msg)
-        help_msg = 'dtype of data to be served.'
-        parser.add_argument("--dtype", "-dt", default=None, help=help_msg)
-        help_msg = ('Network interface over which the monitoring'
-                    'servers can be reached')
-        parser.add_argument("--iface", "-if", default="eth0",
-                            type=str, help=help_msg)
         parser.add_argument(
-            "--name", "-n", default='monitoring', type=str,
-            help='Names over which the monitoring servers can be reached'
+            "--inputs", "-i", action="append",
+            help='IDs of the input pipes of this module'
+        )
+        help_msg = (
+            'json encoded list or list of lists stating the block shapes of '
+            'the data on the input pipes as json array. Note that shapes have '
+            'to be chosen such that blocks come with the same block rate.'
+        )
+        parser.add_argument("--block_shape", "-bs", help=help_msg)
+        help_msg = (
+            'dtypes of data from the input pipes separated by comma.'
+            'Default is float32'
+        )
+        parser.add_argument("--dtype", "-dt", default=None, help=help_msg)
+        help_msg = (
+            'Network interface over which the monitoring servers can be'
+            'reached. Default is eth0.'
+        )
+        parser.add_argument(
+            "--iface", "-if", default="eth0", type=str, help=help_msg
+        )
+        help_msg = (
+            'Names over which the monitoring servers can be reached.'
+            'Default is "monitoring".'
+        )
+        parser.add_argument(
+            "--name", "-n", default='monitoring', type=str, help=help_msg
         )
         args = parser.parse_args()
 
@@ -121,8 +137,8 @@ if __name__ == "__main__":
             block_shape = [block_shape]
         assert isinstance(block_shape[0][0], int), block_shape
         readers = [
-            PipeReader(int(input_), bs)
-            for input_, bs in zip(args.inputs, block_shape)
+            PipeReader(int(input_), bs, dt)
+            for input_, bs, dt in zip(args.inputs, block_shape, dtype)
         ]
         [reader.start() for reader in readers]
         # Get the IP of the device. This is needed to be able to reach the
@@ -157,7 +173,9 @@ if __name__ == "__main__":
             # the monitoring servers.
             for reader, monitoring_server in zip(readers, monitoring_servers):
                 data = reader.get_next_block()
-                monitoring_server.update_data(data.astype(monitoring_server.get_dtype()).tobytes())
+                monitoring_server.update_data(
+                    data.astype(monitoring_server.get_dtype()).tobytes()
+                )
     except Exception:
         # If an error occurs display the error in the console
         import traceback
