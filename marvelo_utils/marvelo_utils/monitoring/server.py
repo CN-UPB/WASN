@@ -3,17 +3,19 @@ Module to send all results to another device on the network where they
 can be displayed
 """
 from __future__ import print_function
+
 import argparse
-from base64 import b64decode
+import json
 import sys
 import time
-import numpy as np
-import netifaces as ni
-import Pyro4
-from Pyro4.naming import startNSloop
+from base64 import b64decode
 from threading import Thread
-from utils import PipeReader
-import json
+
+import Pyro4
+import netifaces as ni
+import numpy as np
+from Pyro4.naming import startNSloop
+from marvelo_utils.pipe.reader import PipeReader
 
 
 @Pyro4.expose
