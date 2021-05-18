@@ -19,6 +19,8 @@ class PipeReader:
         """
         self.fd = fd
         self.block_shape = block_shape
+        if isinstance(dtype, str):
+            dtype = getattr(np, dtype)
         self.dtype = dtype
         self.bytes_per_block = np.prod(block_shape) * dtype().nbytes
         self.queue = Queue()
@@ -47,22 +49,22 @@ class PipeReader:
             # print(x.tobytes() == bytes[:self.bytes_per_block])
             self.queue.put(x)
 
-    def get_next_block(self):
+    def get_next_block(self, timeout=None):
         """
         get the next block from the pipe. Function call is blocking as long as
         the queue of blocks is empty.
         """
         assert self.running, 'pipe reader has not been started yet'
-        return self.queue.get()
+        return self.queue.get(timeout=timeout)
 
-    def get_latest_block(self):
+    def get_latest_block(self, timeout=None):
         """
         get the latest block from the pipe. If there are more than one block in
         the queue, the latest is returned and older ones are discarded.
         Function call is blocking as long as the queue of blocks is empty.
         """
         assert self.running, 'pipe reader has not been started yet'
-        block = self.queue.get()
+        block = self.queue.get(timeout=timeout)
         while not self.queue.empty():
             block = self.queue.get()
         return block
