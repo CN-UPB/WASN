@@ -13,8 +13,8 @@ from threading import Thread
 
 import Pyro4
 import netifaces as ni
-import numpy as np
 from Pyro4.naming import startNSloop
+from queue import Queue
 from marvelo_utils.pipe.reader import PipeReader
 
 
@@ -32,13 +32,11 @@ class MonitioringServer(object):
         """
         self.block_shape = tuple(block_shape)
         self.dtype = dtype
-        self.data = np.zeros(block_shape, dtype=dtype).tobytes()
-        self.block_id = 0
+        self.queue = Queue()
 
     def update_data(self, new_data):
         """Overwrite the current data to be send by the server"""
-        self.data = b64decode(new_data['data'])
-        self.block_id += 1
+        self.queue.put(b64decode(new_data['data']))
 
     def get_block_shape(self):
         """Return the block shape of one block"""
@@ -49,12 +47,8 @@ class MonitioringServer(object):
         return self.dtype
 
     def get_data(self):
-        """Return the currently stored data"""
-        return self.data
-
-    def get_block_id(self):
-        """Return the ID of the currently stored block"""
-        return self.block_id
+        """Return one data block"""
+        return self.queue.get()
 
 
 def run_daemon(ip, server_names, block_shape, dtype):

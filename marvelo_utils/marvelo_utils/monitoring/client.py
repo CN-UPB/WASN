@@ -1,5 +1,4 @@
 import base64
-import time
 from threading import Thread
 
 import Pyro4
@@ -39,18 +38,14 @@ class MonitoringClient:
         Args:
             doc: bokeh document
         """
-        block_idx = 0
         while True:
-            while self.monitoring_server.get_block_id() == block_idx:
-                # Wait until the data stored by the monitoring server is updated
-                # if the currently stored data was already read
-                time.sleep(.01)
-            # Read the data form the monitoring server
-            block_idx = self.monitoring_server.get_block_id()
+            # Read a new data block from the monitoring server
             data = self.monitoring_server.get_data()['data']
             data = np.fromstring(
-                base64.b64decode(data), dtype=self.dtype
+                base64.b64decode(data), dtype=np.float32
             ).reshape(self.block_shape)
+
+            # Update plots
             for fig in self.figures:
                 fig.update_data(data)
             doc.add_next_tick_callback(self.update_figures)
@@ -62,4 +57,4 @@ class MonitoringClient:
         See also marvelo_utils.monitoring.visualization.Figure.
         """
         for fig in self.figures:
-            fig.update_sources()
+            fig.update_figure()
