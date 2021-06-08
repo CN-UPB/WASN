@@ -34,7 +34,7 @@ class Figure:
     def create_figure(self, **kwargs):
         raise NotImplementedError
 
-    def update_sources(self):
+    def update_figure(self):
         raise NotImplementedError
 
 
@@ -101,7 +101,7 @@ class VerticalBars(Figure):
         fig.yaxis.axis_label_text_font_size = f'{font_size}pt'
         return fig
 
-    def update_sources(self):
+    def update_figure(self):
         """
         updating the vertical bars' heights
         """
@@ -114,78 +114,85 @@ class MultiLine(Figure):
             title='',
             xlabel='',
             ylabel='',
+            x_ticks=None,
             plot_width=750,
             plot_height=500,
             font_size=30,
-            y_range=(0., 1.),
+            y_range=(0, 1),
             labels=None,
             line_width=5,
     ):
         """
-        creating a bokeh multi line plot.
+        Creating a bokeh multi line plot.
 
         Args:
-            title:
+            title: title of the plot
             xlabel: label for x axis
             ylabel: label for y axis
-            plot_width:
-            plot_height:
-            font_size:
+            x_ticks: ticks of the x-axis. If None, [0, 1, 2, ...] will be used.
+            plot_width: width (in pixels) of the single plot
+            plot_height: height (in pixels) of the single plot
+            font_size: font size used in the plot
             y_range: tuple (ymin, ymax) of minimal y value (ymin)
                 and maximal y value (ymax)
-            labels: Optional list of labels for the vertical bars.
-            line_width:
+            labels: optional list of labels for the lines
+            line_width: width of the lines
         """
         assert self.data.ndim == 2, self.data.shape
-        num_time_steps, num_classes = self.data.shape
-        if labels is None:
-            labels = [str(i) for i in range(num_classes)]
-        assert len(labels) == num_classes, (num_classes, len(labels), labels)
+        num_time_steps, num_lines = self.data.shape
+        if labels is None and num_lines > 1:
+            labels = [str(i) for i in range(num_lines)]
+            assert len(labels) == num_lines, (num_lines, len(labels), labels)
 
+        if x_ticks is None:
+            x_ticks = np.arange(num_time_steps).astype(np.float32),
         self.sources = [
             ColumnDataSource(
                 data=dict(
-                    x=np.arange(num_time_steps).astype(np.float32),
+                    x=x_ticks,
                     y=np.zeros(num_time_steps).astype(np.float32)
                 )
-            ) for _ in range(num_classes)
+            ) for _ in range(num_lines)
         ]
 
         fig = figure(
             plot_height=plot_height,
             plot_width=plot_width,
             title=title,
-            toolbar_location=None
+            toolbar_location=None,
+            y_range=y_range
         )
         items = []
-        for class_idx in range(num_classes):
+        for line_idx in range(num_lines):
             p = fig.line(
                 'x', 'y',
-                source=self.sources[class_idx],
-                line_color=(Category10[10])[class_idx],
+                source=self.sources[line_idx],
+                line_color=(Category10[10])[line_idx],
                 line_width=line_width
             )
-            items.append((labels[class_idx], [p]))
-        legend = Legend(
-            items=items,
-            location='center',
-            glyph_height=50,
-            glyph_width=30,
-        )
-        fig.add_layout(legend, 'right')
+            if labels is not None:
+                items.append((labels[line_idx], [p]))
+        if labels is not None:
+            legend = Legend(
+                items=items,
+                location='center',
+                glyph_height=50,
+                glyph_width=30,
+            )
+            fig.add_layout(legend, 'right')
         fig.xaxis.axis_label = xlabel
         fig.yaxis.axis_label = ylabel
         fig.title.text_font_size = f'{font_size}pt'
         fig.axis.major_label_text_font_size = f'{font_size}pt'
-        fig.legend.label_text_font_size = f'{font_size}pt'
+        if labels is not None:
+            fig.legend.label_text_font_size = f'{font_size}pt'
         fig.xaxis.axis_label_text_font_size = f'{font_size}pt'
         fig.yaxis.axis_label_text_font_size = f'{font_size}pt'
         fig.x_range.range_padding = 0
-        fig.y_range.range_padding = 0
-        fig.y_range.start, fig.y_range.end = y_range
+        #fig.y_range.start, fig.y_range.end = y_range
         return fig
 
-    def update_sources(self):
+    def update_figure(self):
         y = [yi for yi in self.data.T]
         for src, yi in zip(self.sources, y):
             src.data['y'] = yi
@@ -250,5 +257,5 @@ class Image(Figure):
         fig.yaxis.axis_label_text_font_size = f'{font_size}pt'
         return fig
 
-    def update_sources(self):
+    def update_figure(self):
         self.source.data['v'] = self.data.flatten().tolist()
