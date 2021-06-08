@@ -46,7 +46,6 @@ class PipeReader:
             x = np.fromstring(
                 bytes[:self.bytes_per_block], dtype=self.dtype
             ).reshape(self.block_shape)
-            # print(x.tobytes() == bytes[:self.bytes_per_block])
             self.queue.put(x)
 
     def get_next_block(self, timeout=None):
