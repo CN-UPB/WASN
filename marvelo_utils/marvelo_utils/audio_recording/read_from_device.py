@@ -8,11 +8,12 @@ interface to be used to read from the device corresponds to the integer number
 shown in the first column.
 """
 import argparse
-import os
 import sys
 import numpy as np
 from queue import Queue
 import sounddevice as sd
+from time import sleep
+from marvelo_utils.pipe.writer import BufferingPipeWriter
 
 
 class AudioReader:
@@ -38,11 +39,12 @@ class AudioReader:
         Read current frame from the device and write it to the output pipe.
         This is called (from a separate thread) for each audio frame.
         """
-        if self.start_delay == 0:
-            self.start_delay -= 1
         if self.start_delay > 0:
             # Discard frame during start up phase
-            self.start_delay -= 1
+            if self.start_delay < len(indata):
+                rest = len(indata) - self.start_delay
+                self.queue.put(indata[-rest:])
+            self.start_delay -= len(indata)
         else:
             self.queue.put(indata)
 
@@ -114,27 +116,20 @@ if __name__ == '__main__':
             d_type = np.float32
         elif args.bits_per_sample == 64:
             d_type = np.float64
-        output_pipes = [os.fdopen(int(f), 'wb') for f in args.outputs]
 
         # Read continuously from the device and write the audio
         # to the output pipes
+        start_delay = args.start_delay * args.frame_size
         audio_reader = AudioReader(args.hardware_interface, args.channels,
                                    args.sampling_rate, args.start_delay)
-        buffer = np.zeros((32000, args.channels))
-        len_buffered = 0
-        while audio_reader.audio_stream.active:
-            # Read audio smaples form the queue nad write it to the buffer
-            data = audio_reader.queue.get()
-            buffer[len_buffered:len_buffered+len(data)] = data
-            len_buffered += len(data)
+        pipe_writer = BufferingPipeWriter(
+            audio_reader.queue, args.outputs, (args.frame_size, ), None, d_type
+        )
+        pipe_writer.start()
 
-            # Write all complete frames to the output pipes
-            while len_buffered >= args.frame_size:
-                for pipe in output_pipes:
-                    pipe.write(buffer[:args.frame_size].astype(d_type))
-                    pipe.flush()
-                buffer = np.roll(buffer, -args.frame_size, axis=0)
-                len_buffered -= args.frame_size
+        # Keep the main thread alive as long as the audio stream is available
+        while audio_reader.audio_stream.active:
+            sleep(.1)
     except Exception:
         # If an error occurs display the error in the console
         import traceback
