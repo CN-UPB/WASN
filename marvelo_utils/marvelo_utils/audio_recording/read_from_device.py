@@ -23,7 +23,7 @@ class AudioReader:
             hw_interface: Hardware Interface of the device to be used
             n_chs: Number of channel to be read
             sampling_rate: Target sampling rate
-            start_delay: Number of frames to drop after start
+            start_delay: Number of samples to drop after start
         """
         self.queue = Queue()
         self.start_delay = start_delay
@@ -121,10 +121,10 @@ if __name__ == '__main__':
         # to the output pipes
         start_delay = args.start_delay * args.frame_size
         audio_reader = AudioReader(args.hardware_interface, args.channels,
-                                   args.sampling_rate, args.start_delay)
-        pipe_writer = BufferingPipeWriter(
-            audio_reader.queue, args.outputs, (args.frame_size, ), None, d_type
-        )
+                                   args.sampling_rate, start_delay)
+        pipe_writer = \
+            BufferingPipeWriter(audio_reader.queue, args.outputs,
+                                (args.frame_size, args.channels), None, d_type)
         pipe_writer.start()
 
         # Keep the main thread alive as long as the audio stream is available

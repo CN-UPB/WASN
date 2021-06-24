@@ -48,10 +48,7 @@ class BufferingPipeWriter:
         self.pipes = [os.fdopen(int(fd), 'wb') for fd in fds]
         self.dtype = dtype
         self.block_shape = block_shape
-        if init_buffer is not None:
-            self.buffer = list(init_buffer)
-        else:
-            self.buffer = []
+        self.buffer = init_buffer
 
     def start(self):
         """
@@ -62,13 +59,19 @@ class BufferingPipeWriter:
     def _worker(self):
         while True:
             # Read new data from the queue.
-            self.buffer += list(self.queue.get())
+            if self.buffer is None:
+                self.buffer = self.queue.get()
+            else:
+                self.buffer = np.concatenate((self.buffer, self.queue.get()))
 
             # Get all complete data blocks and write them to the pipes
-            for block in self._get_blocks():
+            while len(self.buffer) >= self.block_shape[0]:
                 for pipe in self.pipes:
-                    pipe.write(block.astype(self.dtype).tobytes())
+                    pipe.write(
+                        self.buffer[:self.block_shape[0]].astype(self.dtype)
+                    )
                     pipe.flush()
+                self.buffer = self.buffer[self.block_shape[0]:]
 
     def _get_blocks(self):
         """
