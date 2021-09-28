@@ -118,6 +118,7 @@ class MultiLine(Figure):
             plot_width=750,
             plot_height=500,
             font_size=30,
+            x_range=None,
             y_range=(0, 1),
             labels=None,
             line_width=5,
@@ -145,7 +146,7 @@ class MultiLine(Figure):
             assert len(labels) == num_lines, (num_lines, len(labels), labels)
 
         if x_ticks is None:
-            x_ticks = np.arange(num_time_steps).astype(np.float32),
+            x_ticks = np.arange(num_time_steps).astype(np.float32)
         self.sources = [
             ColumnDataSource(
                 data=dict(
@@ -160,7 +161,8 @@ class MultiLine(Figure):
             plot_width=plot_width,
             title=title,
             toolbar_location=None,
-            y_range=y_range
+            x_range=x_range,
+            y_range=y_range,
         )
         items = []
         for line_idx in range(num_lines):
@@ -188,7 +190,8 @@ class MultiLine(Figure):
             fig.legend.label_text_font_size = f'{font_size}pt'
         fig.xaxis.axis_label_text_font_size = f'{font_size}pt'
         fig.yaxis.axis_label_text_font_size = f'{font_size}pt'
-        fig.x_range.range_padding = 0
+        if x_range is None:
+            fig.x_range.range_padding = 0
         #fig.y_range.start, fig.y_range.end = y_range
         return fig
 
