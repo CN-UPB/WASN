@@ -1,0 +1,34 @@
+<?xml version="1.0" ?>
+<network>
+    <node pi_id="10.0.2.13">
+        <algorithm path="Demos/system/DXCP_PhaT/" executable="python3.6 -m marvelo_utils.audio_recording.read_from_device">
+            <parameter param="-i 1 -c 1 -f 8000"></parameter>
+            <output target_pi_id="10.0.2.16" pipe_id="1"></output>
+        </algorithm>
+    </node>
+    <node pi_id="10.0.2.15">
+        <algorithm path="Demos/system/DXCP_PhaT/" executable="python3.6 -m marvelo_utils.audio_recording.read_from_device">
+            <parameter param="-i 1 -c 1 -f 8000"></parameter>
+            <output target_pi_id="10.0.2.15" pipe_id="2"></output>
+        </algorithm>
+        <algorithm path="Demos/system/online_wacd/" executable="python3.6 sim_sro.py">
+            <parameter param="-s -60"></parameter>
+            <input source_pi_id="10.0.2.15" pipe_id="2"></input>
+            <output target_pi_id="10.0.2.16" pipe_id="3"></output>
+        </algorithm>
+    </node>
+    <node pi_id="10.0.2.16">
+        <algorithm path="Demos/system/DXCP_PhaT/" executable="python3.6 dxcp_phat_module.py">
+            <parameter param="-s 2 --SmoConst_CSDPhaT_alpha 0.6"></parameter>
+            <input source_pi_id="10.0.2.13" pipe_id="1"></input>
+            <input source_pi_id="10.0.2.15" pipe_id="3"></input>
+            <output target_pi_id="10.0.2.16" pipe_id="4"></output>
+            <output target_pi_id="10.0.2.16" pipe_id="5"></output>
+        </algorithm>
+        <algorithm path="Demos/system/monitoring_server/" executable="python3.6  -m marvelo_utils.monitoring.server">
+            <parameter param="-bs '[[1, 1],[1, 1]]' -n sro,delay -if wlan0"></parameter>
+            <input source_pi_id="10.0.2.16" pipe_id="4"></input>
+            <input source_pi_id="10.0.2.16" pipe_id="5"></input>
+        </algorithm>
+    </node>
+</network>
