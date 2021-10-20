@@ -13,6 +13,20 @@ We propose to present several RPi-based real-time demonstrations to showcase the
 in the DFG-funded collaborative research project Acoustic Sensor Networks. In case of a virtual
 conference we will prepare and present demonstration videos.
 
+## Marvelo Utils
+The marvelo_utils package implements typical functions needed to implement a
+demonstrator using the [MARVELO](https://github.com/CN-UPB/MARVELO) framework:
+    
+- [Audio Recording](marvelo_utils/marvelo_utils/audio_recording/): 
+   - Read audio from a sound card
+   - Write recorded audio to a file
+- [Monitoring](marvelo_utils/marvelo_utils/monitoring/):
+   - Send all results to another device on the network where they can be
+   displayed
+   - Live visualization of the results
+- [Pipe Handling](marvelo_utils/marvelo_utils/pipe/):
+   - Write data to a pipe connecting different modules
+   - Read data from a pipe connecting different modules
 
 ## Demos
 
