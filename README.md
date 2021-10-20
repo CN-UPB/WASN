@@ -2,7 +2,7 @@
 A collection of Demos for DFG FOR 2457 Acoustic Sensor Networks project
 
 ## Marvelo Utils
-The marvelo_utils package implements typical functions needed to implement a
+The [marvelo_utils](marvelo_utils/) package implements typical functions needed to implement a
 demonstrator using the [MARVELO](https://github.com/CN-UPB/MARVELO) framework:
     
 - [Audio Recording](marvelo_utils/marvelo_utils/audio_recording/): 
